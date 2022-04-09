@@ -1,8 +1,29 @@
 defmodule IslandsEngine.Game do
   alias IslandsEngine.{Board, Coordinate, Guesses, Island, Rules}
-  use GenServer
+
+  use GenServer,
+    start: {__MODULE__, :start_link, []},
+    restart: :transient,
+    shutdown: 5000,
+    type: :worker
 
   @players [:player1, :player2]
+  @timeout 60 * 60 * 24 * 1000
+
+  def handle_info(:timeout, state_data) do
+    {:stop, {:shutdown, :timeout}, state_data}
+  end
+
+  def handle_info({:set_state, name}, _state_date) do
+    state_data =
+      case :ets.lookup(:game_state, name) do
+        [] -> fresh_state(name)
+        [{_key, state}] -> state
+      end
+
+    :ets.insert(:game_state, {name, state_data})
+    {:ok, state_data, @timeout}
+  end
 
   def start_link(name) when is_binary(name) do
     GenServer.start_link(__MODULE__, name, name: via_tuple(name))
@@ -13,9 +34,14 @@ defmodule IslandsEngine.Game do
   end
 
   def init(name) do
+    send(self(), {:set_state, name})
+    {:ok, fresh_state(name)}
+  end
+
+  def fresh_state(name) do
     player1 = %{name: name, board: Board.new(), guesses: Guesses.new()}
     player2 = %{name: nil, board: Board.new(), guesses: Guesses.new()}
-    {:ok, %{player1: player1, player2: player2, rules: %Rules{}}}
+    %{player1: player1, player2: player2, rules: %Rules{}}
   end
 
   def position_island(game, player, key, row, col) when player in @players do
@@ -114,7 +140,8 @@ defmodule IslandsEngine.Game do
   end
 
   def reply_success(state_data, reply) do
-    {:reply, reply, state_data}
+    :ets.insert(:game_state, {state_data.player1.name, state_data})
+    {:reply, reply, state_data, @timeout}
   end
 
   def opponent(:player1), do: :player2
