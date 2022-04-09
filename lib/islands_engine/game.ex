@@ -14,7 +14,7 @@ defmodule IslandsEngine.Game do
     {:stop, {:shutdown, :timeout}, state_data}
   end
 
-  def handle_info({:set_state, name}, _state_date) do
+  def handle_info({:set_state, name}, _state_data) do
     state_data =
       case :ets.lookup(:game_state, name) do
         [] -> fresh_state(name)
@@ -22,7 +22,7 @@ defmodule IslandsEngine.Game do
       end
 
     :ets.insert(:game_state, {name, state_data})
-    {:ok, state_data, @timeout}
+    {:noreply, state_data, @timeout}
   end
 
   def start_link(name) when is_binary(name) do
